@@ -29,9 +29,7 @@
     <a href="https://www.openstreetmap.org/copyright/" target="_blank">&copy; OpenStreetMap contributors</a>
 </p>
 
-<!-- Dynamic script loading for Leaflet -->
 <script>
-    // Load necessary resources dynamically
     const isGithubPages = window.location.hostname.includes('github.io');
     const isSkyFire = window.location.hostname.includes('skyfirestudio.com');
     const basePath = isGithubPages ? '/demo-offline-map/' : (isSkyFire ? '/maps/' : '/');
@@ -45,7 +43,7 @@
 <script>
     leafletScript.onload = function () {
         const key = '4jp4WyVHK48PO10ZTVY3';
-        const map = L.map('map');
+        const map = L.map('map').setView([44.029, -121.326], 14);
 
         L.tileLayer('https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=' + key, {
             tileSize: 512,
@@ -55,45 +53,113 @@
             crossOrigin: true
         }).addTo(map);
 
-        // Geofence GeoJSON
+        // Marker icon increased by 1.5 times
+        const largeIcon = L.icon({
+            iconUrl: basePath + 'images/marker-icon.png',
+            shadowUrl: basePath + 'images/marker-shadow.png',
+            iconSize: [38, 57],
+            shadowSize: [57, 57],
+            iconAnchor: [19, 57],
+            shadowAnchor: [28, 57],
+            popupAnchor: [1, -57]
+        });
+
+        // GeoJSON data for markers
         const geojsonData = {
             "type": "FeatureCollection",
-            "name": "geofence",
             "features": [
-                {
-                    "type": "Feature",
-                    "geometry": {
-                        "type": "Polygon",
-                        "coordinates": [
-                            [
-                                [ -111.7950638, 40.7082173 ],
-                                [ -111.7998703, 40.433869 ],
-                                [ -111.4881332, 40.4333463 ],
-                                [ -111.4888199, 40.5774424 ],
-                                [ -111.4929398, 40.7399606 ],
-                                [ -111.7964371, 40.7383998 ],
-                                [ -111.7950638, 40.7082173 ]
-                            ]
-                        ]
-                    }
-                }
+                { "type": "Feature", "properties": { "Name": "Point 1" }, "geometry": { "type": "Point", "coordinates": [-121.3248433, 44.0273845] } },
+                { "type": "Feature", "properties": { "Name": "Point 2" }, "geometry": { "type": "Point", "coordinates": [-121.3255353, 44.0294484] } },
+                { "type": "Feature", "properties": { "Name": "Point 3" }, "geometry": { "type": "Point", "coordinates": [-121.3298322, 44.0309563] } }
+            ]
+        };
+
+        // Add markers from GeoJSON
+        L.geoJSON(geojsonData, {
+            pointToLayer: function(feature, latlng) {
+                const marker = L.marker(latlng, { icon: largeIcon });
+                marker.bindPopup(feature.properties.Name, { autoClose: false, closeOnClick: true });
+                return marker;
+            }
+        }).addTo(map);
+
+        // Geofence GeoJSON
+        const geofenceData = {
+            "type": "FeatureCollection",
+            "name": "geofence",
+            "crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+            "features": [
+                { "type": "Feature", "properties": { "Name": "Boundary", "description": null, "timestamp": null, "begin": null, "end": null, "altitudeMode": null, "tessellate": -1, "extrude": 0, "visibility": -1, "drawOrder": null, "icon": null }, "geometry": { "type": "Polygon", "coordinates": [ [ [ -121.6616601, 44.031076, 0.0 ], [ -121.6544503, 43.7152761, 0.0 ], [ -121.308381, 43.7204869, 0.0 ], [ -121.3193673, 44.0328038, 0.0 ], [ -121.6616601, 44.031076, 0.0 ] ] ] } }
             ]
         };
 
         // Add geofence to map and fit bounds
-        const geofenceLayer = L.geoJSON(geojsonData).addTo(map);
+        const geofenceLayer = L.geoJSON(geofenceData).addTo(map);
         map.fitBounds(geofenceLayer.getBounds());
+
+        // Geolocation marker
+        function onLocationFound(e) {
+            L.popup()
+                .setLatLng(e.latlng)
+                .setContent("I'm here!")
+                .openOn(map);
+        }
+
+        map.on('locationfound', onLocationFound);
+
+        // Geolocation button click handler
+        document.getElementById('locateBtn').addEventListener('click', function() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(function(position) {
+                    const userLat = position.coords.latitude;
+                    const userLng = position.coords.longitude;
+
+                    console.log("Geolocation found:", userLat, userLng);
+
+                    // Fire the location event manually
+                    map.fire('locationfound', {
+                        latlng: L.latLng(userLat, userLng),
+                        accuracy: position.coords.accuracy
+                    });
+
+                    // Set view to user's location
+                    try {
+                        map.setView([userLat, userLng], 13);
+                    } catch (err) {
+                        alert("Unable to update the map view. Check your internet connection.");
+                    }
+                }, function(error) {
+                    console.error("Error getting geolocation: ", error);
+                    alert("Unable to retrieve your location.");
+                });
+            } else {
+                console.log("Geolocation is not supported by this browser.");
+            }
+        });
+
+        // Show current zoom level in console
+        console.log("Initial Zoom Level:", map.getZoom());
+        map.on('zoomend', function () {
+            console.log("Zoom Level:", map.getZoom());
+        });
 
         // Preload tiles button click handler
         document.getElementById('preloadBtn').addEventListener('click', function() {
             const bounds = geofenceLayer.getBounds();
+            const urlParams = new URLSearchParams(window.location.search);
+            const maxZoom = urlParams.has('maxzoom') ? parseInt(urlParams.get('maxzoom')) : 15;
 
-            for (let zoom = 0; zoom <= 15; zoom++) {
+            let tilesLoaded = 0;
+            let totalTiles = 0;
+
+            for (let zoom = 0; zoom <= maxZoom; zoom++) {
                 const tileBounds = map.getPixelBounds(bounds.getNorthWest(), zoom);
                 const tileRange = L.bounds(
                     tileBounds.min.divideBy(256).floor(),
                     tileBounds.max.divideBy(256).floor()
                 );
+
+                totalTiles += (tileRange.max.x - tileRange.min.x + 1) * (tileRange.max.y - tileRange.min.y + 1);
 
                 for (let j = tileRange.min.y; j <= tileRange.max.y; j++) {
                     for (let i = tileRange.min.x; i <= tileRange.max.x; i++) {
@@ -104,7 +170,9 @@
                             fetch(url).then(function(response) {
                                 if (response.ok) {
                                     cache.put(url, response.clone());
+                                    tilesLoaded++;
                                     console.log(`Tile at ${zoom}/${i}/${j} cached.`);
+                                    console.log(`Loaded ${tilesLoaded}/${totalTiles} tiles.`);
                                 } else {
                                     console.warn(`Failed to fetch tile at ${zoom}/${i}/${j}: Status ${response.status}`);
                                 }
@@ -119,7 +187,6 @@
     };
 </script>
 
-
 <!-- Register Service Worker -->
 <script>
     if ('serviceWorker' in navigator) {
@@ -127,11 +194,6 @@
             console.log('Service Worker registered with scope: ', registration.scope);
         }).catch(function(error) {
             console.error('Service Worker registration failed: ', error);
-        });
-
-        navigator.serviceWorker.addEventListener('controllerchange', function() {
-            console.log('Service Worker controller changed. Reloading page to update content.');
-            window.location.reload();
         });
 
         navigator.serviceWorker.addEventListener('controllerchange', function() {

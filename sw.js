@@ -59,7 +59,7 @@ self.addEventListener('fetch', function(event) {
             caches.match(event.request, { ignoreVary: true }).then(function(response) {
                 if (response) {
                     // Если ресурс найден в кэше, вернуть его
-                    console.log(`Serving from cache: ${event.request.url}`);
+                    // console.log(`Serving from cache: ${event.request.url}`);
                     return response;
                 }
 
@@ -69,7 +69,6 @@ self.addEventListener('fetch', function(event) {
                         const responseClone = networkResponse.clone();
                         caches.open(cacheName).then(function(cache) {
                             cache.put(event.request, responseClone);
-                            console.log(`Fetched from network and cached: ${event.request.url}`);
                         });
                     }
                     return networkResponse;
