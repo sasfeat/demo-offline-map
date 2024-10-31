@@ -143,47 +143,67 @@
             console.log("Zoom Level:", map.getZoom());
         });
 
-        // Preload tiles button click handler
+        // Создаем буферную зону в два раза больше исходной геозоны
+        const enlargedBounds = geofenceLayer.getBounds().pad(1); // Увеличиваем на 100% (1 = в 2 раза больше)
+
+
         document.getElementById('preloadBtn').addEventListener('click', function() {
-            const bounds = geofenceLayer.getBounds();
-            const urlParams = new URLSearchParams(window.location.search);
-            const maxZoom = urlParams.has('maxzoom') ? parseInt(urlParams.get('maxzoom')) : 15;
+            const bounds = enlargedBounds; // Используем увеличенные границы
+            const zoom = 13; // Фиксируем уровень зума для отладки
+            const tileSize = 512; // Размер тайла
+
+            console.log("Bounds for debugging:", bounds); // Проверка координат границ
+
+            // Проверяем тайловые координаты для северо-западного и юго-восточного углов
+            const nwTile = latLngToTile(bounds.getNorthWest(), zoom, tileSize);
+            const seTile = latLngToTile(bounds.getSouthEast(), zoom, tileSize);
+
+            console.log("NW Tile:", nwTile);
+            console.log("SE Tile:", seTile);
 
             let tilesLoaded = 0;
             let totalTiles = 0;
 
-            for (let zoom = 0; zoom <= maxZoom; zoom++) {
-                const tileBounds = map.getPixelBounds(bounds.getNorthWest(), zoom);
-                const tileRange = L.bounds(
-                    tileBounds.min.divideBy(256).floor(),
-                    tileBounds.max.divideBy(256).floor()
-                );
+            totalTiles = (seTile.x - nwTile.x + 1) * (seTile.y - nwTile.y + 1);
 
-                totalTiles += (tileRange.max.x - tileRange.min.x + 1) * (tileRange.max.y - tileRange.min.y + 1);
+            // Перебираем диапазон тайлов от северо-западного до юго-восточного угла
+            for (let y = nwTile.y; y <= seTile.y; y++) {
+                for (let x = nwTile.x; x <= seTile.x; x++) {
+                    const url = `https://api.maptiler.com/maps/streets-v2/${zoom}/${x}/${y}.png?key=${key}`;
 
-                for (let j = tileRange.min.y; j <= tileRange.max.y; j++) {
-                    for (let i = tileRange.min.x; i <= tileRange.max.x; i++) {
-                        const url = `https://api.maptiler.com/maps/streets-v2/${zoom}/${i}/${j}.png?key=${key}`;
-
-                        // Кэшируем тайл через Service Worker
-                        caches.open('maptiler-raster-cache-v3').then(function(cache) {
-                            fetch(url).then(function(response) {
-                                if (response.ok) {
-                                    cache.put(url, response.clone());
-                                    tilesLoaded++;
-                                    console.log(`Tile at ${zoom}/${i}/${j} cached.`);
-                                    console.log(`Loaded ${tilesLoaded}/${totalTiles} tiles.`);
-                                } else {
-                                    console.warn(`Failed to fetch tile at ${zoom}/${i}/${j}: Status ${response.status}`);
-                                }
-                            }).catch(function(error) {
-                                console.error(`Error fetching tile at ${zoom}/${i}/${j}:`, error);
-                            });
+                    // Кэшируем тайл через Service Worker
+                    caches.open('maptiler-raster-cache-v3').then(function(cache) {
+                        fetch(url).then(function(response) {
+                            if (response.ok) {
+                                cache.put(url, response.clone());
+                                tilesLoaded++;
+                                console.log(`Tile at ${zoom}/${x}/${y} cached.`);
+                                console.log(`Loaded ${tilesLoaded}/${totalTiles} tiles.`);
+                            } else {
+                                console.warn(`Failed to fetch tile at ${zoom}/${x}/${y}: Status ${response.status}`);
+                            }
+                        }).catch(function(error) {
+                            console.error(`Error fetching tile at ${zoom}/${x}/${y}:`, error);
                         });
-                    }
+                    });
                 }
             }
         });
+
+        // Функция для преобразования широты и долготы в тайловые координаты
+        function latLngToTile(latlng, zoom, tileSize) {
+            const latRad = latlng.lat * Math.PI / 180; // Конвертация широты в радианы
+            const n = Math.pow(2, zoom);
+            const x = Math.floor((latlng.lng + 180) / 360 * n); // Долгота в координаты тайла
+            const y = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n); // Широта в координаты тайла
+
+            return { x: x, y: y };
+        }
+
+
+
+
+
     };
 </script>
 
