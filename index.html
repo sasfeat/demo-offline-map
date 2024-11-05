@@ -4,13 +4,13 @@
     <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
     <title>Display a map</title>
 
-    <!-- Статические стили -->
+    <!-- Static styles -->
     <link id="leaflet-css" rel="stylesheet" href="libs/leaflet.css" />
 
     <style>
         #map { position: absolute; top: 0; right: 0; bottom: 0; left: 0; }
-        #locateBtn, #preloadBtn { position: absolute; bottom: 10px; right: 10px; z-index: 1000; padding: 10px; background-color: white; border: 1px solid #ccc; cursor: pointer; }
-        #preloadBtn { right: 120px; }
+        #locateBtn, #preloadBtn { position: absolute; bottom: 20px; right: 10px; z-index: 1000; padding: 10px; background-color: white; border: 1px solid #ccc; cursor: pointer; }
+        #preloadBtn { bottom: 60px; }
     </style>
 </head>
 <body>
@@ -94,7 +94,14 @@
         };
 
         // Add geofence to map and fit bounds
-        const geofenceLayer = L.geoJSON(geofenceData).addTo(map);
+        const geofenceLayer = L.geoJSON(geofenceData, {
+            style: function (feature) {
+                return {
+                    weight: 1,           // Thickness of the border
+                    fillOpacity: 0       // Remove fill by setting fill opacity to 0
+                };
+            }
+        }).addTo(map);
         map.fitBounds(geofenceLayer.getBounds());
 
         // Geolocation marker
@@ -145,26 +152,23 @@
 
 
         document.getElementById('preloadBtn').addEventListener('click', function() {
-            const bounds = geofenceLayer.getBounds(); // Используем оригинальные границы без увеличения
-            const maxZoom = 15; // Максимальный уровень зума для загрузки
-            const tileSize = 512; // Размер тайла
+            const bounds = geofenceLayer.getBounds();
+            const maxZoom = parseInt(new URLSearchParams(window.location.search).get("maxzoom")) || 15;
+            const tileSize = 512;
 
             let tilesLoaded = 0;
             let totalTiles = 0;
 
-            // Перебираем каждый уровень зума
-            for (let zoom = 0; zoom <= maxZoom; zoom++) {
+            for (let zoom = 1; zoom < maxZoom; zoom++) {
                 const nwTile = latLngToTile(bounds.getNorthWest(), zoom, tileSize);
                 const seTile = latLngToTile(bounds.getSouthEast(), zoom, tileSize);
 
                 totalTiles += (seTile.x - nwTile.x + 1) * (seTile.y - nwTile.y + 1);
 
-                // Перебираем диапазон тайлов от северо-западного до юго-восточного угла
                 for (let y = nwTile.y; y <= seTile.y; y++) {
                     for (let x = nwTile.x; x <= seTile.x; x++) {
                         const url = `https://api.maptiler.com/maps/streets-v2/${zoom}/${x}/${y}.png?key=${key}`;
 
-                        // Кэшируем тайл через Service Worker
                         caches.open('maptiler-raster-cache-v3').then(function(cache) {
                             fetch(url).then(function(response) {
                                 if (response.ok) {
@@ -184,21 +188,15 @@
             }
         });
 
-// Функция для преобразования широты и долготы в тайловые координаты
+
         function latLngToTile(latlng, zoom, tileSize) {
-            const latRad = latlng.lat * Math.PI / 180; // Конвертация широты в радианы
+            const latRad = latlng.lat * Math.PI / 180;
             const n = Math.pow(2, zoom);
-            const x = Math.floor((latlng.lng + 180) / 360 * n); // Долгота в координаты тайла
-            const y = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n); // Широта в координаты тайла
+            const x = Math.floor((latlng.lng + 180) / 360 * n);
+            const y = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n);
 
             return { x: x, y: y };
         }
-
-
-
-
-
-
     };
 </script>
 
