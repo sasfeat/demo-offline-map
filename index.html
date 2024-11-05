@@ -143,54 +143,48 @@
             console.log("Zoom Level:", map.getZoom());
         });
 
-        // Создаем буферную зону в два раза больше исходной геозоны
-        const enlargedBounds = geofenceLayer.getBounds().pad(1); // Увеличиваем на 100% (1 = в 2 раза больше)
-
 
         document.getElementById('preloadBtn').addEventListener('click', function() {
-            const bounds = enlargedBounds; // Используем увеличенные границы
-            const zoom = 13; // Фиксируем уровень зума для отладки
+            const bounds = geofenceLayer.getBounds(); // Используем оригинальные границы без увеличения
+            const maxZoom = 15; // Максимальный уровень зума для загрузки
             const tileSize = 512; // Размер тайла
-
-            console.log("Bounds for debugging:", bounds); // Проверка координат границ
-
-            // Проверяем тайловые координаты для северо-западного и юго-восточного углов
-            const nwTile = latLngToTile(bounds.getNorthWest(), zoom, tileSize);
-            const seTile = latLngToTile(bounds.getSouthEast(), zoom, tileSize);
-
-            console.log("NW Tile:", nwTile);
-            console.log("SE Tile:", seTile);
 
             let tilesLoaded = 0;
             let totalTiles = 0;
 
-            totalTiles = (seTile.x - nwTile.x + 1) * (seTile.y - nwTile.y + 1);
+            // Перебираем каждый уровень зума
+            for (let zoom = 0; zoom <= maxZoom; zoom++) {
+                const nwTile = latLngToTile(bounds.getNorthWest(), zoom, tileSize);
+                const seTile = latLngToTile(bounds.getSouthEast(), zoom, tileSize);
 
-            // Перебираем диапазон тайлов от северо-западного до юго-восточного угла
-            for (let y = nwTile.y; y <= seTile.y; y++) {
-                for (let x = nwTile.x; x <= seTile.x; x++) {
-                    const url = `https://api.maptiler.com/maps/streets-v2/${zoom}/${x}/${y}.png?key=${key}`;
+                totalTiles += (seTile.x - nwTile.x + 1) * (seTile.y - nwTile.y + 1);
 
-                    // Кэшируем тайл через Service Worker
-                    caches.open('maptiler-raster-cache-v3').then(function(cache) {
-                        fetch(url).then(function(response) {
-                            if (response.ok) {
-                                cache.put(url, response.clone());
-                                tilesLoaded++;
-                                console.log(`Tile at ${zoom}/${x}/${y} cached.`);
-                                console.log(`Loaded ${tilesLoaded}/${totalTiles} tiles.`);
-                            } else {
-                                console.warn(`Failed to fetch tile at ${zoom}/${x}/${y}: Status ${response.status}`);
-                            }
-                        }).catch(function(error) {
-                            console.error(`Error fetching tile at ${zoom}/${x}/${y}:`, error);
+                // Перебираем диапазон тайлов от северо-западного до юго-восточного угла
+                for (let y = nwTile.y; y <= seTile.y; y++) {
+                    for (let x = nwTile.x; x <= seTile.x; x++) {
+                        const url = `https://api.maptiler.com/maps/streets-v2/${zoom}/${x}/${y}.png?key=${key}`;
+
+                        // Кэшируем тайл через Service Worker
+                        caches.open('maptiler-raster-cache-v3').then(function(cache) {
+                            fetch(url).then(function(response) {
+                                if (response.ok) {
+                                    cache.put(url, response.clone());
+                                    tilesLoaded++;
+                                    console.log(`Tile at ${zoom}/${x}/${y} cached.`);
+                                    console.log(`Loaded ${tilesLoaded}/${totalTiles} tiles.`);
+                                } else {
+                                    console.warn(`Failed to fetch tile at ${zoom}/${x}/${y}: Status ${response.status}`);
+                                }
+                            }).catch(function(error) {
+                                console.error(`Error fetching tile at ${zoom}/${x}/${y}:`, error);
+                            });
                         });
-                    });
+                    }
                 }
             }
         });
 
-        // Функция для преобразования широты и долготы в тайловые координаты
+// Функция для преобразования широты и долготы в тайловые координаты
         function latLngToTile(latlng, zoom, tileSize) {
             const latRad = latlng.lat * Math.PI / 180; // Конвертация широты в радианы
             const n = Math.pow(2, zoom);
@@ -199,6 +193,7 @@
 
             return { x: x, y: y };
         }
+
 
 
 
