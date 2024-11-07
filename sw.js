@@ -92,5 +92,60 @@ self.addEventListener('fetch', function(event) {
     }
 });
 
+self.addEventListener('message', function(event) {
+    if (event.data && event.data.type === 'PRELOAD_TILES') {
+
+        const bounds = event.data.bounds;
+        const maxZoom = event.data.maxZoom;
+        const tileSize = event.data.tileSize;
+        const key = '4jp4WyVHK48PO10ZTVY3';  // Make sure the key is accessible in the SW
+
+        let tilesLoaded = 0;
+        let totalTiles = 0;
+
+        // Function to convert lat/lng to tile coordinates
+        function latLngToTile(latlng, zoom, tileSize) {
+            const latRad = latlng.lat * Math.PI / 180;  // Use latlng.lat instead of latlng[0]
+            const n = Math.pow(2, zoom);
+            const x = Math.floor((latlng.lng + 180) / 360 * n);  // Use latlng.lng instead of latlng[1]
+            const y = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n);
+            return { x: x, y: y };
+        }
+
+        for (let zoom = 1; zoom < maxZoom; zoom++) {
+            const nwTile = latLngToTile(bounds.northWest, zoom, tileSize);
+            const seTile = latLngToTile(bounds.southEast, zoom, tileSize);
+
+            if (isNaN(nwTile.x) || isNaN(nwTile.y) || isNaN(seTile.x) || isNaN(seTile.y)) {
+                console.error('Invalid tile coordinates:', nwTile, seTile);
+                continue;  // Пропустить итерацию, если координаты тайла недействительны
+            }
+
+            totalTiles += (seTile.x - nwTile.x + 1) * (seTile.y - nwTile.y + 1);
+
+            for (let y = nwTile.y; y <= seTile.y; y++) {
+                for (let x = nwTile.x; x <= seTile.x; x++) {
+                    const url = `https://api.maptiler.com/maps/streets-v2/${zoom}/${x}/${y}.png?key=${key}`;
+
+                    caches.open('maptiler-raster-cache-v3').then(function(cache) {
+                        fetch(url).then(function(response) {
+                            if (response.ok) {
+                                cache.put(url, response.clone());
+                                tilesLoaded++;
+                                console.log(`Tile at ${zoom}/${x}/${y} cached.`);
+                                console.log(`Loaded ${tilesLoaded}/${totalTiles} tiles.`);
+                            } else {
+                                console.warn(`Failed to fetch tile at ${zoom}/${x}/${y}: Status ${response.status}`);
+                            }
+                        }).catch(function(error) {
+                            console.error(`Error fetching tile at ${zoom}/${x}/${y}:`, error);
+                        });
+                    });
+                }
+            }
+        }
+    }
+});
+
 
 
