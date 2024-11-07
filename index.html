@@ -48,7 +48,7 @@
         const key = '4jp4WyVHK48PO10ZTVY3';
         const map = L.map('map').setView([44.029, -121.326], 14);
 
-        L.tileLayer('https://api.maptiler.com/maps/streets-v2/{z}/{x}/{y}.png?key=' + key, {
+        L.tileLayer('https://api.maptiler.com/maps/hybrid/{z}/{x}/{y}.jpg?key=' + key, {
             tileSize: 512,
             zoomOffset: -1,
             minZoom: 1,
@@ -131,6 +131,70 @@
             });
         }
 
+        // Geolocation marker
+        function onLocationFound(e) {
+            L.popup()
+                .setLatLng(e.latlng)
+                .setContent("I'm here!")
+                .openOn(map);
+        }
+
+        map.on('locationfound', onLocationFound);
+
+        // Geolocation button click handler
+        document.getElementById('locateBtn').addEventListener('click', function() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(function(position) {
+                    const userLat = position.coords.latitude;
+                    const userLng = position.coords.longitude;
+
+                    console.log("Geolocation found:", userLat, userLng);
+
+                    // Fire the location event manually
+                    map.fire('locationfound', {
+                        latlng: L.latLng(userLat, userLng),
+                        accuracy: position.coords.accuracy
+                    });
+
+                    // Set view to user's location
+                    try {
+                        map.setView([userLat, userLng], 13);
+                    } catch (err) {
+                        alert("Unable to update the map view. Check your internet connection.");
+                    }
+                }, function(error) {
+                    console.error("Error getting geolocation: ", error);
+                    alert("Unable to retrieve your location.");
+                });
+            } else {
+                console.log("Geolocation is not supported by this browser.");
+            }
+        });
+
+        // Show current zoom level in console
+        console.log("Initial Zoom Level:", map.getZoom());
+        map.on('zoomend', function () {
+            console.log("Zoom Level:", map.getZoom());
+        });
+
+
+        document.getElementById('preloadBtn').addEventListener('click', function() {
+            if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+                const bounds = geofenceLayer.getBounds();
+                navigator.serviceWorker.controller.postMessage({
+                    type: 'PRELOAD_TILES',
+                    bounds: {
+                        northWest: bounds.getNorthWest(),
+                        southEast: bounds.getSouthEast()
+                    },
+                    maxZoom: parseInt(new URLSearchParams(window.location.search).get("maxzoom")) || 15,
+                    tileSize: 512
+                });
+            } else {
+                console.error('Service Worker not available or not yet activated.');
+            }
+        });
+
         // Fetch markers initially
         fetchMarkers();
 
@@ -177,6 +241,7 @@
             });
         }
     });
+
 
 </script>
 

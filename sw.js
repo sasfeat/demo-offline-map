@@ -53,7 +53,7 @@ self.addEventListener('activate', function(event) {
     );
 });
 self.addEventListener('fetch', function(event) {
-    if (event.request.url.includes('https://api.maptiler.com/maps/streets-v2/')) {
+    if (event.request.url.includes('https://api.maptiler.com/maps/hybrid/')) {
         // Перехватываем запросы к тайлам
         event.respondWith(
             caches.match(event.request, { ignoreVary: true }).then(function(response) {
@@ -125,7 +125,7 @@ self.addEventListener('message', function(event) {
 
             for (let y = nwTile.y; y <= seTile.y; y++) {
                 for (let x = nwTile.x; x <= seTile.x; x++) {
-                    const url = `https://api.maptiler.com/maps/streets-v2/${zoom}/${x}/${y}.png?key=${key}`;
+                    const url = `https://api.maptiler.com/maps/hybrid/${zoom}/${x}/${y}.jpg?key=${key}`;
 
                     caches.open('maptiler-raster-cache-v3').then(function(cache) {
                         fetch(url).then(function(response) {
