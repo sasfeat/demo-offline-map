@@ -147,5 +147,14 @@ self.addEventListener('message', function(event) {
     }
 });
 
-
-
+// Update the Service Worker (sw.js) to cache marker data
+self.addEventListener('message', function(event) {
+    if (event.data && event.data.type === 'CACHE_MARKERS') {
+        const markerData = event.data.data;
+        caches.open(cacheName).then(function(cache) {
+            const markersUrl = 'https://www.mapreact.com/map/maps.php?id=test';
+            cache.put(markersUrl, new Response(JSON.stringify(markerData)));
+            console.log('Markers cached successfully.');
+        });
+    }
+});

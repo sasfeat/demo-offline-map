@@ -9,8 +9,10 @@
 
     <style>
         #map { position: absolute; top: 0; right: 0; bottom: 0; left: 0; }
-        #locateBtn, #preloadBtn { position: absolute; bottom: 20px; right: 10px; z-index: 1000; padding: 10px; background-color: white; border: 1px solid #ccc; cursor: pointer; }
+        #locateBtn, #preloadBtn,#clearCacheBtn { position: absolute; bottom: 20px; right: 10px; z-index: 1000; padding: 10px; background-color: white; border: 1px solid #ccc; cursor: pointer; }
         #preloadBtn { bottom: 60px; }
+        #clearCacheBtn {bottom: 100px}
+
     </style>
 </head>
 <body>
@@ -23,7 +25,7 @@
 
 <button id="locateBtn">Show my location</button>
 <button id="preloadBtn">Preload Tiles</button>
-
+<button id="clearCacheBtn">Clear Cache</button>
 <p>
     <a href="https://www.maptiler.com/copyright/" target="_blank">&copy; MapTiler</a>
     <a href="https://www.openstreetmap.org/copyright/" target="_blank">&copy; OpenStreetMap contributors</a>
@@ -42,6 +44,7 @@
 
 <script>
     leafletScript.onload = function () {
+        const cacheName = 'maptiler-raster-cache-v3';
         const key = '4jp4WyVHK48PO10ZTVY3';
         const map = L.map('map').setView([44.029, -121.326], 14);
 
@@ -64,24 +67,72 @@
             popupAnchor: [1, -57]
         });
 
-        // GeoJSON data for markers
-        const geojsonData = {
-            "type": "FeatureCollection",
-            "features": [
-                { "type": "Feature", "properties": { "Name": "Point 1" }, "geometry": { "type": "Point", "coordinates": [-121.3248433, 44.0273845] } },
-                { "type": "Feature", "properties": { "Name": "Point 2" }, "geometry": { "type": "Point", "coordinates": [-121.3255353, 44.0294484] } },
-                { "type": "Feature", "properties": { "Name": "Point 3" }, "geometry": { "type": "Point", "coordinates": [-121.3298322, 44.0309563] } }
-            ]
-        };
+        // Function to fetch JSON data for markers and lines from API
+        function fetchMarkers() {
+            fetch('https://www.mapreact.com/map/maps.php?id=test')
+                .then(response => response.json())
+                .then(data => {
+                    // Cache the JSON data using the Service Worker
+                    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+                        navigator.serviceWorker.controller.postMessage({
+                            type: 'CACHE_MARKERS',
+                            data: data
+                        });
+                    }
 
-        // Add markers from GeoJSON
-        L.geoJSON(geojsonData, {
-            pointToLayer: function(feature, latlng) {
-                const marker = L.marker(latlng, { icon: largeIcon });
-                marker.bindPopup(feature.properties.Name, { autoClose: false, closeOnClick: true });
-                return marker;
-            }
-        }).addTo(map);
+                    // Add markers from fetched JSON data
+                    data.points.forEach(point => {
+                        const marker = L.marker([point.coordinates[1], point.coordinates[0]], { icon: largeIcon });
+                        marker.bindPopup(point.Name, { autoClose: false, closeOnClick: true });
+                        marker.addTo(map);
+                    });
+
+                    // Add lines from fetched JSON data
+                    data.lines.forEach(line => {
+                        const latlngs = line.coordinates.map(coord => [coord[1], coord[0]]);
+                        const polyline = L.polyline(latlngs, { color: 'blue' });
+                        polyline.bindPopup(line.Name, { autoClose: false, closeOnClick: true });
+                        polyline.addTo(map);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching markers:', error);
+                    loadMarkersFromCache();
+                });
+        }
+
+        // Function to load markers from cache
+        function loadMarkersFromCache() {
+            caches.open(cacheName).then(function (cache) {
+                const markersUrl = 'https://www.mapreact.com/map/maps.php?id=test';
+                cache.match(markersUrl).then(function (response) {
+                    if (response) {
+                        response.json().then(function (cachedData) {
+                            console.log('Loading markers from cache');
+                            // Add markers from cached JSON data
+                            cachedData.points.forEach(point => {
+                                const marker = L.marker([point.coordinates[1], point.coordinates[0]], { icon: largeIcon });
+                                marker.bindPopup(point.Name, { autoClose: false, closeOnClick: true });
+                                marker.addTo(map);
+                            });
+
+                            // Add lines from cached JSON data
+                            cachedData.lines.forEach(line => {
+                                const latlngs = line.coordinates.map(coord => [coord[1], coord[0]]);
+                                const polyline = L.polyline(latlngs, { color: 'blue' });
+                                polyline.bindPopup(line.Name, { autoClose: false, closeOnClick: true });
+                                polyline.addTo(map);
+                            });
+                        });
+                    } else {
+                        console.log('No cached marker data found.');
+                    }
+                });
+            });
+        }
+
+        // Fetch markers initially
+        fetchMarkers();
 
         // Geofence GeoJSON
         const geofenceData = {
@@ -103,71 +154,30 @@
             }
         }).addTo(map);
         map.fitBounds(geofenceLayer.getBounds());
-
-        // Geolocation marker
-        function onLocationFound(e) {
-            L.popup()
-                .setLatLng(e.latlng)
-                .setContent("I'm here!")
-                .openOn(map);
-        }
-
-        map.on('locationfound', onLocationFound);
-
-        // Geolocation button click handler
-        document.getElementById('locateBtn').addEventListener('click', function() {
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(function(position) {
-                    const userLat = position.coords.latitude;
-                    const userLng = position.coords.longitude;
-
-                    console.log("Geolocation found:", userLat, userLng);
-
-                    // Fire the location event manually
-                    map.fire('locationfound', {
-                        latlng: L.latLng(userLat, userLng),
-                        accuracy: position.coords.accuracy
-                    });
-
-                    // Set view to user's location
-                    try {
-                        map.setView([userLat, userLng], 13);
-                    } catch (err) {
-                        alert("Unable to update the map view. Check your internet connection.");
-                    }
-                }, function(error) {
-                    console.error("Error getting geolocation: ", error);
-                    alert("Unable to retrieve your location.");
-                });
-            } else {
-                console.log("Geolocation is not supported by this browser.");
-            }
-        });
-
-        // Show current zoom level in console
-        console.log("Initial Zoom Level:", map.getZoom());
-        map.on('zoomend', function () {
-            console.log("Zoom Level:", map.getZoom());
-        });
-
-
-        document.getElementById('preloadBtn').addEventListener('click', function() {
-            if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-                const bounds = geofenceLayer.getBounds();
-                navigator.serviceWorker.controller.postMessage({
-                    type: 'PRELOAD_TILES',
-                    bounds: {
-                        northWest: bounds.getNorthWest(),
-                        southEast: bounds.getSouthEast()
-                    },
-                    maxZoom: parseInt(new URLSearchParams(window.location.search).get("maxzoom")) || 15,
-                    tileSize: 512
-                });
-            } else {
-                console.error('Service Worker not available or not yet activated.');
-            }
-        });
     };
+
+
+    document.getElementById('clearCacheBtn').addEventListener('click', function() {
+        if ('caches' in window) {
+            caches.keys().then(function(cacheNames) {
+                cacheNames.forEach(function(cacheName) {
+                    caches.delete(cacheName).then(function(success) {
+                        if (success) {
+                            console.log(`Cache ${cacheName} cleared successfully.`);
+                            alert(`Cache ${cacheName} cleared successfully.`);
+                        } else {
+                            console.log(`Failed to clear cache ${cacheName}.`);
+                            alert(`Failed to clear cache ${cacheName}.`);
+                        }
+                    }).catch(function(error) {
+                        console.error(`Error clearing cache ${cacheName}:`, error);
+                        alert('Error clearing cache. Check the console for more details.');
+                    });
+                });
+            });
+        }
+    });
+
 </script>
 
 <!-- Register Service Worker -->
