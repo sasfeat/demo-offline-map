@@ -52,44 +52,35 @@ self.addEventListener('activate', function(event) {
         })
     );
 });
-self.addEventListener('fetch', function(event) {
-    if (event.request.url.includes('https://api.maptiler.com/maps/hybrid/')) {
-        // Перехватываем запросы к тайлам
-        event.respondWith(
-            caches.match(event.request, { ignoreVary: true }).then(function(response) {
-                if (response) {
-                    // Если ресурс найден в кэше, вернуть его
-                    // console.log(`Serving from cache: ${event.request.url}`);
-                    return response;
-                }
 
-                // Если тайл не найден в кэше, запросить его из сети и добавить в кэш
-                return fetch(event.request).then(function(networkResponse) {
-                    if (networkResponse && networkResponse.status === 200) {
-                        const responseClone = networkResponse.clone();
-                        caches.open(cacheName).then(function(cache) {
-                            cache.put(event.request, responseClone);
-                        });
-                    }
-                    return networkResponse;
-                }).catch(function(error) {
-                    // Если нет сети, вернуть "заглушку" или уведомить пользователя
-                    console.error(`Failed to fetch tile, no network: ${event.request.url}`, error);
-                    return new Response('Tile not found and no network access.', {
-                        status: 503,
-                        statusText: 'Service Unavailable'
+self.addEventListener('fetch', function(event) {
+    event.respondWith(
+        caches.match(event.request, { ignoreVary: true }).then(function(response) {
+            if (response) {
+                // If the request is found in the cache, return it
+                return response;
+            }
+            // If the request is not found in the cache, fetch it from the network
+            return fetch(event.request).then(function(networkResponse) {
+                // Check if we received a valid response
+                if (networkResponse && networkResponse.status === 200) {
+                    // Clone the response before putting it in the cache
+                    const responseClone = networkResponse.clone();
+                    caches.open(cacheName).then(function(cache) {
+                        cache.put(event.request, responseClone);
                     });
+                }
+                return networkResponse;
+            }).catch(function(error) {
+                // If the network fetch fails, handle it here (optional)
+                console.error(`Failed to fetch resource: ${event.request.url}`, error);
+                return new Response('Resource not found and no network access.', {
+                    status: 503,
+                    statusText: 'Service Unavailable'
                 });
-            })
-        );
-    } else {
-        // Обычная обработка для других запросов
-        event.respondWith(
-            caches.match(event.request, { ignoreVary: true }).then(function(response) {
-                return response || fetch(event.request);
-            })
-        );
-    }
+            });
+        })
+    );
 });
 
 self.addEventListener('message', function(event) {
