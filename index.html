@@ -9,9 +9,10 @@
 
     <style>
         #map { position: absolute; top: 0; right: 0; bottom: 0; left: 0; }
-        #locateBtn, #preloadBtn,#clearCacheBtn { position: absolute; bottom: 20px; right: 10px; z-index: 1000; padding: 10px; background-color: white; border: 1px solid #ccc; cursor: pointer; }
+        #locateBtn, #preloadBtn,#clearCacheBtn,#tilesLoadedBtn { position: absolute; bottom: 20px; right: 10px; z-index: 1000; padding: 10px; background-color: white; border: 1px solid #ccc; cursor: pointer; }
         #preloadBtn { bottom: 60px; }
         #clearCacheBtn {bottom: 100px}
+        #tilesLoadedBtn {bottom: 140px;}
 
     </style>
 </head>
@@ -26,6 +27,8 @@
 <button id="locateBtn">Show my location</button>
 <button id="preloadBtn">Preload Tiles</button>
 <button id="clearCacheBtn">Clear Cache</button>
+<button id="tilesLoadedBtn">Tiles Loaded?</button>
+
 <p>
     <a href="https://www.maptiler.com/copyright/" target="_blank">&copy; MapTiler</a>
     <a href="https://www.openstreetmap.org/copyright/" target="_blank">&copy; OpenStreetMap contributors</a>
@@ -218,29 +221,81 @@
             }
         }).addTo(map);
         map.fitBounds(geofenceLayer.getBounds());
+
+        // TODO: Remove hardcode!
+        //  Check if tiles are loaded
+        document.getElementById('tilesLoadedBtn').addEventListener('click', function() {
+            caches.open(cacheName).then(function(cache) {
+                let allTilesLoaded = true;
+
+                const bounds = geofenceLayer.getBounds();
+                const maxZoom = parseInt(new URLSearchParams(window.location.search).get("maxzoom")) || 15;
+
+                function latLngToTile(latlng, zoom) {
+                    const latRad = latlng.lat * Math.PI / 180;
+                    const n = Math.pow(2, zoom);
+                    const x = Math.floor((latlng.lng + 180) / 360 * n);
+                    const y = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n);
+                    return { x: x, y: y };
+                }
+
+                for (let zoom = 1; zoom < maxZoom; zoom++) {
+                    const nwTile = latLngToTile(bounds.getNorthWest(), zoom);
+                    const seTile = latLngToTile(bounds.getSouthEast(), zoom);
+
+                    for (let y = nwTile.y; y <= seTile.y; y++) {
+                        for (let x = nwTile.x; x <= seTile.x; x++) {
+                            const url = `https://api.maptiler.com/maps/hybrid/${zoom}/${x}/${y}.jpg?key=4jp4WyVHK48PO10ZTVY3`;
+
+                            cache.match(url).then(function(response) {
+                                if (!response) {
+                                    allTilesLoaded = false;
+                                    console.log(`Tile at ${zoom}/${x}/${y} is missing.`);
+                                }
+                            });
+                        }
+                    }
+                }
+
+                setTimeout(() => {
+                    if (allTilesLoaded) {
+                        console.log("All tiles are loaded!");
+                    } else {
+                        console.log("Some tiles are missing.");
+                    }
+                }, 1000);
+            }).catch(function(error) {
+                console.error('Error accessing cache:', error);
+            });
+        });
+
+
+        document.getElementById('clearCacheBtn').addEventListener('click', function() {
+            if ('caches' in window) {
+                caches.keys().then(function(cacheNames) {
+                    cacheNames.forEach(function(cacheName) {
+                        caches.delete(cacheName).then(function(success) {
+                            if (success) {
+                                console.log(`Cache ${cacheName} cleared successfully.`);
+                                alert(`Cache ${cacheName} cleared successfully.`);
+                            } else {
+                                console.log(`Failed to clear cache ${cacheName}.`);
+                                alert(`Failed to clear cache ${cacheName}.`);
+                            }
+                        }).catch(function(error) {
+                            console.error(`Error clearing cache ${cacheName}:`, error);
+                            alert('Error clearing cache. Check the console for more details.');
+                        });
+                    });
+                });
+            }
+        });
     };
 
 
-    document.getElementById('clearCacheBtn').addEventListener('click', function() {
-        if ('caches' in window) {
-            caches.keys().then(function(cacheNames) {
-                cacheNames.forEach(function(cacheName) {
-                    caches.delete(cacheName).then(function(success) {
-                        if (success) {
-                            console.log(`Cache ${cacheName} cleared successfully.`);
-                            alert(`Cache ${cacheName} cleared successfully.`);
-                        } else {
-                            console.log(`Failed to clear cache ${cacheName}.`);
-                            alert(`Failed to clear cache ${cacheName}.`);
-                        }
-                    }).catch(function(error) {
-                        console.error(`Error clearing cache ${cacheName}:`, error);
-                        alert('Error clearing cache. Check the console for more details.');
-                    });
-                });
-            });
-        }
-    });
+
+
+
 
 
 </script>
